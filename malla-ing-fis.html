@@ -1,0 +1,482 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Malla Interactiva - Ingeniería Física USACH</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f0f2f5;
+        }
+        .course-card {
+            transition: all 0.2s ease-in-out;
+            cursor: pointer;
+            min-height: 85px;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            border: 2.5px solid transparent;
+            position: relative;
+        }
+        .course-card:hover {
+            transform: translateY(-4px) scale(1.03);
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+        }
+        .attempts-badge {
+            position: absolute;
+            top: -5px;
+            right: -5px;
+            background-color: #6366f1;
+            color: white;
+            border-radius: 9999px;
+            width: 20px;
+            height: 20px;
+            font-size: 11px;
+            font-weight: bold;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: 1px solid white;
+        }
+        /* Course States */
+        .course-approved { background-color: #d1fae5 !important; border-color: #10b981 !important; color: #065f46 !important; }
+        .course-in-progress { background-color: #fef3c7 !important; border-color: #f59e0b !important; color: #92400e !important; }
+        .course-failed { background-color: #fee2e2 !important; border-color: #ef4444 !important; color: #991b1b !important; }
+        .course-annual-continuation { border: 2px dashed #9ca3af; background-color: #f3f4f6; opacity: 0.8; cursor: default; }
+        /* Highlighting Classes */
+        .dimmed { opacity: 0.3; filter: grayscale(80%); }
+        .highlight-prereq { border-color: #34D399 !important; box-shadow: 0 0 15px rgba(52, 211, 153, 0.5); }
+        .highlight-unlock { border-color: #60A5FA !important; box-shadow: 0 0 15px rgba(96, 165, 250, 0.5); }
+        .highlight-current { transform: translateY(-4px) scale(1.05); border-color: #FBBF24 !important; box-shadow: 0 0 20px rgba(251, 191, 36, 0.6); }
+        
+        .mobile-scroll-container { -webkit-overflow-scrolling: touch; }
+        .semester-column { min-width: 170px; }
+    </style>
+</head>
+<body class="antialiased text-gray-800">
+
+    <header class="bg-white shadow-md p-4 sticky top-0 z-20">
+        <div class="container mx-auto">
+            <h1 class="text-2xl font-bold text-gray-900">Malla Interactiva - Ingeniería Física (USACH)</h1>
+            <p class="text-sm text-gray-600 mt-2">
+                <strong>Click:</strong> "En Curso". | 
+                <strong>Click Derecho / Mantener presionado:</strong> Gestionar notas y intentos. |
+                <strong>Hover:</strong> Ver prerrequisitos.
+            </p>
+        </div>
+    </header>
+
+    <!-- Progress Panel -->
+    <section class="container mx-auto p-4 md:px-6 md:pt-6">
+        <div class="bg-white p-4 rounded-xl shadow-md">
+            <h2 class="text-xl font-bold mb-3 text-gray-800">Tu Progreso</h2>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 text-center">
+                <div>
+                    <p class="text-sm text-gray-500">Promedio Ponderado Acumulado (PPA)</p>
+                    <p id="ppa-display" class="text-2xl font-bold text-indigo-600">0.00</p>
+                </div>
+                <div>
+                    <p class="text-sm text-gray-500">Créditos Aprobados</p>
+                    <p id="credits-display" class="text-2xl font-bold text-indigo-600">0 / 0</p>
+                </div>
+                <div class="md:col-span-1">
+                     <p class="text-sm text-gray-500">Avance de Carrera</p>
+                    <div class="w-full bg-gray-200 rounded-full h-6 mt-1 overflow-hidden">
+                        <div id="progress-bar" class="bg-indigo-600 h-6 text-xs font-medium text-white text-center p-1 leading-none rounded-full" style="width: 0%">
+                           <span id="progress-percent">0%</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <main class="container mx-auto p-4 md:p-6">
+        <div id="malla-container" class="w-full overflow-x-auto mobile-scroll-container pb-4">
+            <div id="malla-grid" class="flex space-x-4"></div>
+        </div>
+        <div id="legend" class="mt-6 p-4 bg-white rounded-lg shadow-md">
+            <h3 class="text-lg font-semibold mb-2">Leyenda de Colores</h3>
+            <div class="flex flex-wrap gap-4"></div>
+        </div>
+    </main>
+
+    <!-- Grade Management Modal -->
+    <div id="grade-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50 hidden">
+        <div class="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-md">
+            <h3 id="grade-modal-title" class="text-xl font-bold text-gray-900 mb-4">Gestionar Notas</h3>
+            
+            <div id="attempts-history" class="mb-4">
+                <h4 class="text-sm font-semibold text-gray-600 mb-2">Historial de Intentos</h4>
+                <ul id="attempts-list" class="space-y-1 text-sm"></ul>
+            </div>
+
+            <div id="add-attempt-form">
+                 <h4 class="text-sm font-semibold text-gray-600 mb-2">Añadir Nuevo Intento</h4>
+                <div class="flex items-center space-x-2">
+                    <input type="number" id="grade-input" class="w-full border-gray-300 rounded-md shadow-sm focus:border-indigo-500 focus:ring-indigo-500" placeholder="Ej: 4.0" step="0.1" min="1.0" max="7.0">
+                     <div class="flex items-center">
+                        <input id="approved-checkbox" type="checkbox" class="h-4 w-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500">
+                        <label for="approved-checkbox" class="ml-2 block text-sm text-gray-900">Aprobado</label>
+                    </div>
+                </div>
+                <p class="text-xs text-gray-500 mt-1">Una nota bajo 4.0 se considera reprobada.</p>
+            </div>
+
+            <div class="mt-6 flex justify-between">
+                <div>
+                     <button id="delete-last-attempt-button" class="px-4 py-2 bg-red-100 text-red-700 rounded-md hover:bg-red-200 text-sm">Eliminar último</button>
+                </div>
+                <div class="flex space-x-2">
+                    <button id="cancel-grade-button" class="px-4 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300">Cerrar</button>
+                    <button id="save-grade-button" class="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700">Añadir Intento</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+
+    <script>
+        // --- DATA ---
+        const coursesData = [
+            // First Year (Annual)
+            { id: "25001", name: "Introducción a la Física", semester: 1, credits: 12, area: "Módulo Básico", prereqs: [], isAnnual: true },
+            { id: "25002", name: "Cálculo", semester: 1, credits: 12, area: "Módulo Básico", prereqs: [], isAnnual: true },
+            { id: "25003", name: "Álgebra", semester: 1, credits: 12, area: "Módulo Básico", prereqs: [], isAnnual: true },
+            { id: "25053", name: "Física Experimental I", semester: 1, credits: 8, area: "Módulo Básico", prereqs: [], isAnnual: true },
+            // Semester 2
+            { id: "25054", name: "Métodos Computacionales para la Física I", semester: 2, credits: 4, area: "Módulo Básico", prereqs: [] },
+            // Semester 3
+            { id: "25007", name: "Electromagnetismo I", semester: 3, credits: 5, area: "Módulo Básico", prereqs: ["25001"] },
+            { id: "25008", name: "Cálculo Avanzado", semester: 3, credits: 6, area: "Módulo Básico", prereqs: ["25002"] },
+            { id: "25010", name: "Ecuaciones Diferenciales", semester: 3, credits: 5, area: "Módulo Básico", prereqs: ["25002", "25003"] },
+            { id: "25055", name: "Métodos Computacionales para la Física II", semester: 3, credits: 4, area: "Módulo Básico", prereqs: ["25054"] },
+            { id: "25011", name: "Física Experimental III", semester: 3, credits: 6, area: "Módulo Básico", prereqs: ["25053"] },
+            // Semester 4
+            { id: "25012", name: "Electromagnetismo II", semester: 4, credits: 5, area: "Módulo Básico", prereqs: ["25007", "25008"] },
+            { id: "25013", name: "Métodos Matemáticos para la Física I", semester: 4, credits: 4, area: "Módulo Básico", prereqs: ["25008", "25010"] },
+            { id: "25014", name: "Electrónica", semester: 4, credits: 4, area: "Módulo de Especialidad", prereqs: ["25007"] },
+            { id: "25015", name: "Mecánica Clásica", semester: 4, credits: 6, area: "Módulo de Especialidad", prereqs: ["25001"] },
+            { id: "25056", name: "Métodos Computacionales y Estadísticos III", semester: 4, credits: 4, area: "Módulo Básico", prereqs: ["25055"] },
+            // Semester 5
+            { id: "25016", name: "Óptica", semester: 5, credits: 4, area: "Módulo de Especialidad", prereqs: ["25012"] },
+            { id: "25017", name: "Métodos Matemáticos para la Física II", semester: 5, credits: 4, area: "Módulo de Especialidad", prereqs: ["25013"] },
+            { id: "25018", name: "Termodinámica", semester: 5, credits: 4, area: "Módulo de Especialidad", prereqs: ["25002"] },
+            { id: "25019", name: "Física Experimental IV", semester: 5, credits: 4, area: "Módulo de Especialidad", prereqs: ["25012"] },
+            { id: "25020", name: "Física Experimental V", semester: 5, credits: 6, area: "Módulo de Especialidad", prereqs: ["25012"] },
+            // Semester 6
+            { id: "25021", name: "Física Moderna", semester: 6, credits: 4, area: "Módulo de Especialidad", prereqs: ["25012"] },
+            { id: "25024", name: "Técnicas Experimentales I", semester: 6, credits: 4, area: "Módulo de Especialidad", prereqs: ["25014"]},
+            { id: "25022", name: "Mecánica de Fluidos", semester: 6, credits: 4, area: "Módulo de Especialidad", prereqs: ["25012"] },
+            { id: "25030", name: "Epistemologia", semester: 6, credits: 3, area: "Módulo Profesional", prereqs: [] },
+            { id: "25025", name: "Química", semester: 6, credits: 4, area: "Módulo Básico", prereqs: [] },
+            // Semester 7
+            { id: "25026", name: "Mecánica Cuántica", semester: 7, credits: 5, area: "Módulo de Especialidad", prereqs: ["25012"] },
+            { id: "25027", name: "Mecánica Estadística", semester: 7, credits: 5, area: "Módulo de Especialidad", prereqs: ["25012"] },
+            { id: "25028", name: "Cálculo Numérico", semester: 7, credits: 4, area: "Módulo de Especialidad", prereqs: ["25010"] },
+            { id: "25029", name: "Técnicas Experimentales II", semester: 7, credits: 4, area: "Módulo de Especialidad", prereqs: ["25024"]},
+            { id: "25023", name: "Física Experimental VI", semester: 7, credits: 6, area: "Módulo de Especialidad", prereqs: [] }, 
+            // Semester 8
+            { id: "25031", name: "Física del Sólido", semester: 8, credits: 5, area: "Módulo de Especialidad", prereqs: ["25026"] },
+            { id: "25032", name: "Laboratorio Avanzado", semester: 8, credits: 6, area: "Módulo de Especialidad", prereqs: ["25023"] },
+            { id: "25033", name: "Espectroscopia Moderna", semester: 8, credits: 4, area: "Módulo de Especialidad", prereqs: ["25026"] },
+            { id: "25034", name: "Electivo I", semester: 8, credits: 3, area: "Electivo / Tópicos", prereqs: [] },
+            // Semester 9
+            { id: "25035", name: "Electivo II", semester: 9, credits: 3, area: "Electivo / Tópicos", prereqs: [] },
+            { id: "25036", name: "Desarrollo Social de Chile", semester: 9, credits: 3, area: "Módulo Profesional", prereqs: [] },
+            { id: "25037", name: "Teoría Económica", semester: 9, credits: 4, area: "Módulo Profesional", prereqs: [] },
+            { id: "25038", name: "Taller de Desarrollo Personal", semester: 9, credits: 2, area: "Módulo Profesional", prereqs: [] },
+            { id: "25039", name: "Tópicos Profesionales I", semester: 9, credits: 3, area: "Módulo Profesional", prereqs: [] },
+            { id: "25040", name: "Tópicos Profesionales II", semester: 9, credits: 3, area: "Módulo Profesional", prereqs: [] },
+            { id: "25041", name: "Tópicos Profesionales III", semester: 9, credits: 3, area: "Módulo Profesional", prereqs: [] },
+            // Semester 10
+            { id: "25042", name: "Administración de Empresas", semester: 10, credits: 4, area: "Módulo Profesional", prereqs: [] },
+            { id: "25043", name: "Ingeniería Económica y Evaluación de Proyectos", semester: 10, credits: 4, area: "Módulo Profesional", prereqs: [] },
+            { id: "25044", name: "Taller de Relaciones Interpersonales", semester: 10, credits: 2, area: "Módulo Profesional", prereqs: [] },
+            { id: "25045", name: "Tópicos Profesionales IV", semester: 10, credits: 3, area: "Módulo Profesional", prereqs: [] },
+            { id: "25046", name: "Tópicos Profesionales V", semester: 10, credits: 3, area: "Módulo Profesional", prereqs: [] },
+            // Semester 11
+            { id: "25048", name: "Teoría de Sistemas", semester: 11, credits: 5, area: "Módulo Profesional", prereqs: [] },
+            { id: "25049", name: "Teoría de Proyectos", semester: 11, credits: 5, area: "Módulo Profesional", prereqs: [] },
+            { id: "25047", name: "Tópicos Profesionales VI", semester: 11, credits: 3, area: "Módulo Profesional", prereqs: [] },
+            // Semester 12
+            { id: "25050", name: "Trabajo de Titulación", semester: 12, credits: 10, area: "Proyecto / Práctica", prereqs: [] },
+            { id: "25051", name: "Práctica Profesional", semester: 12, credits: 0, area: "Proyecto / Práctica", prereqs: [] },
+        ];
+        const areaColors = { "Módulo Básico": "bg-sky-200", "Módulo de Especialidad": "bg-indigo-200", "Módulo Profesional": "bg-teal-200", "Electivo / Tópicos": "bg-gray-200", "Proyecto / Práctica": "bg-amber-200" };
+        const areaTextColors = { "Módulo Básico": "text-sky-800", "Módulo de Especialidad": "text-indigo-800", "Módulo Profesional": "text-teal-800", "Electivo / Tópicos": "text-gray-800", "Proyecto / Práctica": "text-amber-800" };
+        
+        // --- STATE MANAGEMENT ---
+        let inProgressCourses = [];
+        // grades object now stores an array of attempt objects for each course
+        // e.g., grades = { "25001": [{grade: 2.5, approved: false}, {grade: 5.5, approved: true}] }
+        let grades = {};
+
+        // --- INITIALIZATION ---
+        document.addEventListener('DOMContentLoaded', () => {
+            loadState();
+            setupUI();
+            updateAllCourseStyles();
+            updateProgressPanel();
+        });
+
+        // --- UI SETUP ---
+        function setupUI() {
+            const mallaGrid = document.getElementById('malla-grid');
+            const legendContainer = document.querySelector('#legend div');
+            mallaGrid.innerHTML = '';
+            legendContainer.innerHTML = '';
+
+            const maxSemester = Math.max(...coursesData.map(c => c.semester));
+            for (let i = 1; i <= maxSemester; i++) {
+                mallaGrid.innerHTML += `<div class="flex-shrink-0 semester-column"><div class="text-center font-bold text-lg mb-4 p-2 bg-white rounded-md shadow-sm">Semestre ${i}</div><div class="space-y-3" id="semester-${i}"></div></div>`;
+            }
+
+            coursesData.forEach(course => {
+                const semesterContainer = document.getElementById(`semester-${course.semester}`);
+                if (semesterContainer) {
+                    const courseCard = createCourseCard(course);
+                    semesterContainer.appendChild(courseCard);
+                }
+                if (course.isAnnual) {
+                    const continuationContainer = document.getElementById(`semester-${course.semester + 1}`);
+                    if (continuationContainer) {
+                        const continuationCard = document.createElement('div');
+                        continuationCard.className = 'course-card p-3 rounded-lg shadow-inner course-annual-continuation flex items-center justify-center';
+                        continuationCard.innerHTML = `<p class="text-xs text-gray-500 text-center">Cont. ${course.name}</p>`;
+                        continuationContainer.appendChild(continuationCard);
+                    }
+                }
+            });
+
+            Object.keys(areaColors).forEach(area => {
+                const legendItem = document.createElement('div');
+                legendItem.className = 'flex items-center';
+                legendItem.innerHTML = `<div class="w-4 h-4 rounded-full mr-2 ${areaColors[area]}"></div><span class="text-sm">${area}</span>`;
+                legendContainer.appendChild(legendItem);
+            });
+            setupGradeModal();
+        }
+
+        function createCourseCard(course) {
+            const courseCard = document.createElement('div');
+            courseCard.className = `course-card p-3 rounded-lg shadow-md ${areaColors[course.area] || 'bg-gray-200'} ${areaTextColors[course.area] || 'text-gray-800'}`;
+            courseCard.dataset.id = course.id;
+
+            const annualTagHTML = course.isAnnual ? `<div class="text-center mt-1"><span class="text-xs font-semibold bg-rose-200 text-rose-800 px-2 py-0.5 rounded-full">ANUAL</span></div>` : '';
+            courseCard.innerHTML = `<div class="text-center"><p class="font-bold text-sm">${course.name}</p><p class="font-mono text-xs opacity-80">${course.id}</p></div>${annualTagHTML}`;
+            
+            courseCard.addEventListener('click', () => handleLeftClick(course.id));
+            courseCard.addEventListener('contextmenu', (e) => handleRightClick(e, course.id));
+            courseCard.addEventListener('mouseover', () => highlightConnections(course.id));
+            courseCard.addEventListener('mouseout', resetHighlight);
+            
+            let pressTimer;
+            courseCard.addEventListener('touchstart', (e) => { pressTimer = setTimeout(() => { e.preventDefault(); handleRightClick(e, course.id)}, 500); });
+            courseCard.addEventListener('touchend', () => clearTimeout(pressTimer));
+            return courseCard;
+        }
+
+        // --- EVENT HANDLERS ---
+        function handleLeftClick(courseId) {
+            if (grades[courseId] && grades[courseId].length > 0) return; // Cannot change state if it has grades
+            inProgressCourses = inProgressCourses.includes(courseId) ? inProgressCourses.filter(id => id !== courseId) : [...inProgressCourses, courseId];
+            updateCourseStyle(courseId);
+            saveState();
+        }
+
+        function handleRightClick(e, courseId) {
+            e.preventDefault();
+            showGradeModal(courseId);
+        }
+        
+        // --- GRADE MODAL LOGIC ---
+        function setupGradeModal() {
+            const modal = document.getElementById('grade-modal');
+            const cancelButton = document.getElementById('cancel-grade-button');
+            const saveButton = document.getElementById('save-grade-button');
+            const deleteButton = document.getElementById('delete-last-attempt-button');
+            const gradeInput = document.getElementById('grade-input');
+            const approvedCheckbox = document.getElementById('approved-checkbox');
+
+            cancelButton.onclick = hideGradeModal;
+            modal.onclick = (e) => { if (e.target === modal) hideGradeModal(); };
+            
+            gradeInput.addEventListener('input', () => {
+                const grade = parseFloat(gradeInput.value.replace(',', '.'));
+                approvedCheckbox.checked = (grade >= 4.0);
+            });
+        }
+
+        function showGradeModal(courseId) {
+            const modal = document.getElementById('grade-modal');
+            const titleEl = document.getElementById('grade-modal-title');
+            const gradeInput = document.getElementById('grade-input');
+            const approvedCheckbox = document.getElementById('approved-checkbox');
+            const saveButton = document.getElementById('save-grade-button');
+            const deleteButton = document.getElementById('delete-last-attempt-button');
+            const attemptsList = document.getElementById('attempts-list');
+            const course = coursesData.find(c => c.id === courseId);
+
+            titleEl.textContent = `Gestionar Notas: ${course.name}`;
+            gradeInput.value = '';
+            approvedCheckbox.checked = false;
+
+            // Populate history
+            attemptsList.innerHTML = '';
+            const courseAttempts = grades[courseId] || [];
+            if (courseAttempts.length > 0) {
+                courseAttempts.forEach((attempt, index) => {
+                    const li = document.createElement('li');
+                    const statusClass = attempt.approved ? 'text-green-600' : 'text-red-600';
+                    const statusText = attempt.approved ? 'Aprobado' : 'Reprobado';
+                    li.innerHTML = `Intento ${index + 1}: <span class="font-bold ${statusClass}">${attempt.grade.toFixed(1)} (${statusText})</span>`;
+                    attemptsList.appendChild(li);
+                });
+                deleteButton.style.display = 'block';
+            } else {
+                attemptsList.innerHTML = `<li class="text-gray-500">Aún no hay intentos registrados.</li>`;
+                deleteButton.style.display = 'none';
+            }
+
+            modal.classList.remove('hidden');
+
+            saveButton.onclick = () => {
+                const grade = parseFloat(gradeInput.value.replace(',', '.'));
+                if (isNaN(grade) || grade < 1.0 || grade > 7.0) {
+                    alert("Por favor, ingresa una nota válida entre 1.0 y 7.0.");
+                    return;
+                }
+                
+                if (!grades[courseId]) grades[courseId] = [];
+                grades[courseId].push({ grade: grade, approved: approvedCheckbox.checked });
+                inProgressCourses = inProgressCourses.filter(id => id !== courseId);
+                
+                hideGradeModal();
+                updateAllCourseStyles();
+                updateProgressPanel();
+                saveState();
+            };
+
+            deleteButton.onclick = () => {
+                if (grades[courseId] && grades[courseId].length > 0) {
+                    grades[courseId].pop();
+                    if(grades[courseId].length === 0) {
+                        delete grades[courseId];
+                    }
+                    hideGradeModal();
+                    updateAllCourseStyles();
+                    updateProgressPanel();
+                    saveState();
+                }
+            };
+        }
+
+        function hideGradeModal() {
+            document.getElementById('grade-modal').classList.add('hidden');
+        }
+
+        // --- PROGRESS & STYLE UPDATES ---
+        function updateProgressPanel() {
+            const totalCredits = coursesData.reduce((sum, course) => sum + course.credits, 0);
+            
+            let weightedSum = 0;
+            let totalCreditsAttempted = 0;
+            let approvedCourseSet = new Set();
+
+            Object.keys(grades).forEach(courseId => {
+                const course = coursesData.find(c => c.id === courseId);
+                if (!course) return;
+                
+                grades[courseId].forEach(attempt => {
+                    weightedSum += attempt.grade * course.credits;
+                    totalCreditsAttempted += course.credits;
+                    if (attempt.approved) {
+                        approvedCourseSet.add(courseId);
+                    }
+                });
+            });
+
+            const approvedCredits = [...approvedCourseSet].reduce((sum, courseId) => {
+                 return sum + (coursesData.find(c => c.id === courseId)?.credits || 0);
+            }, 0);
+
+            const ppa = totalCreditsAttempted > 0 ? (weightedSum / totalCreditsAttempted).toFixed(2) : '0.00';
+            const progressPercent = totalCredits > 0 ? (approvedCredits / totalCredits * 100) : 0;
+            
+            document.getElementById('ppa-display').textContent = ppa;
+            document.getElementById('credits-display').textContent = `${approvedCredits} / ${totalCredits}`;
+            document.getElementById('progress-bar').style.width = `${progressPercent}%`;
+            document.getElementById('progress-percent').textContent = `${Math.round(progressPercent)}%`;
+        }
+        
+        function updateAllCourseStyles() {
+            coursesData.forEach(course => updateCourseStyle(course.id));
+        }
+
+        function updateCourseStyle(courseId) {
+            const card = document.querySelector(`.course-card[data-id='${courseId}']`);
+            if (!card) return;
+            
+            card.classList.remove('course-approved', 'course-in-progress', 'course-failed');
+            const existingBadge = card.querySelector('.attempts-badge');
+            if(existingBadge) existingBadge.remove();
+
+            const courseAttempts = grades[courseId] || [];
+            if (courseAttempts.length > 0) {
+                const lastAttempt = courseAttempts[courseAttempts.length - 1];
+                card.classList.add(lastAttempt.approved ? 'course-approved' : 'course-failed');
+                if (courseAttempts.length > 1) {
+                    const badge = document.createElement('span');
+                    badge.className = 'attempts-badge';
+                    badge.textContent = `x${courseAttempts.length}`;
+                    card.appendChild(badge);
+                }
+            } else if (inProgressCourses.includes(courseId)) {
+                card.classList.add('course-in-progress');
+            }
+        }
+
+        // --- LOCAL STORAGE ---
+        function saveState() {
+            localStorage.setItem('inProgressCourses', JSON.stringify(inProgressCourses));
+            localStorage.setItem('grades', JSON.stringify(grades));
+        }
+
+        function loadState() {
+            inProgressCourses = JSON.parse(localStorage.getItem('inProgressCourses')) || [];
+            grades = JSON.parse(localStorage.getItem('grades')) || {};
+        }
+
+        // --- VISUALIZATION & HIGHLIGHTING ---
+        function highlightConnections(courseId) {
+            const course = coursesData.find(c => c.id === courseId);
+            if (!course || (grades[courseId] && grades[courseId].length > 0)) return;
+            
+            const allCards = document.querySelectorAll('.course-card[data-id]');
+            const prereqIds = course.prereqs || [];
+            const unlockIds = coursesData.filter(c => c.prereqs?.includes(courseId)).map(c => c.id);
+
+            allCards.forEach(card => {
+                const id = card.dataset.id;
+                if (id !== courseId && !prereqIds.includes(id) && !unlockIds.includes(id)) {
+                    card.classList.add('dimmed');
+                }
+                if (prereqIds.includes(id)) card.classList.add('highlight-prereq');
+                if (unlockIds.includes(id)) card.classList.add('highlight-unlock');
+                if (id === courseId) card.classList.add('highlight-current');
+            });
+        }
+
+        function resetHighlight() {
+            document.querySelectorAll('.course-card[data-id]').forEach(card => {
+                card.classList.remove('dimmed', 'highlight-prereq', 'highlight-unlock', 'highlight-current');
+            });
+        }
+    </script>
+</body>
+</html>
+
