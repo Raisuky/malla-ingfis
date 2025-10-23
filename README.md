@@ -12,4 +12,4 @@ Esta es una página web interactiva para poder visualizar y seguir el progreso e
 
 ### Sobre el Desarrollo
 
-Este proyecto fue desarrollado por Joaquín Riquelme Ponce. La estructura base del código y la implementación de las funcionalidades se generaron con la asistencia de *Gemini*, un modelo de lenguaje grande de Google, bajo mi dirección y especificaciones.
+Este proyecto fue desarrollado por Joaquín Riquelme. La estructura base del código y la implementación de las funcionalidades se generaron con la asistencia de *Gemini*, un modelo de lenguaje grande de Google, bajo mi dirección y especificaciones.
